@@ -270,38 +270,38 @@ def generate_summary(text):
     except Exception as e:
         return f"Error generating summary: {e}"
 
-# def search_youtube_videos(query="msnbc trump musk"):
-#     now = datetime.utcnow()
-#     yesterday = now - timedelta(days=2)
-#     published_after = yesterday.isoformat("T") + "Z"
-#     url = "https://www.googleapis.com/youtube/v3/search"
-#     params = {
-#         "part": "snippet",
-#         "q": query,
-#         "type": "video",
-#         "order": "date",
-#         "publishedAfter": published_after,
-#         "maxResults": 5,
-#         "key": YOUTUBE_API_KEY
-#     }
-#     res = requests.get(url, params=params)
-#     res.raise_for_status()
-#     data = res.json()
-#     videos = []
-#     for item in data.get("items", []):
-#         video_id = item["id"]["videoId"]
-#         import html
-#         title = html.unescape(item["snippet"]["title"])
-#         link = f"https://www.youtube.com/watch?v={video_id}"
-#         videos.append({"title": title, "link": link})
-#     return videos
-
-
 def search_youtube_videos(query="msnbc trump musk"):
-    return [
-        {"title": "House Democrats Say Trump Must Fire Musk in 50 Days", "link": "Sm_tCsKNrag"},
-        {"title": "Peter Navarro Says Tariffs are the Only Defense", "link": "aeM8v_idbg0"},
-    ]
+    now = datetime.utcnow()
+    yesterday = now - timedelta(days=2)
+    published_after = yesterday.isoformat("T") + "Z"
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "part": "snippet",
+        "q": query,
+        "type": "video",
+        "order": "date",
+        "publishedAfter": published_after,
+        "maxResults": 5,
+        "key": YOUTUBE_API_KEY
+    }
+    res = requests.get(url, params=params)
+    res.raise_for_status()
+    data = res.json()
+    videos = []
+    for item in data.get("items", []):
+        video_id = item["id"]["videoId"]
+        import html
+        title = html.unescape(item["snippet"]["title"])
+        link = f"https://www.youtube.com/watch?v={video_id}"
+        videos.append({"title": title, "link": link})
+    return videos
+
+
+# def search_youtube_videos(query="msnbc trump musk"):
+#     return [
+#         {"title": "House Democrats Say Trump Must Fire Musk in 50 Days", "link": "Sm_tCsKNrag"},
+#         {"title": "Peter Navarro Says Tariffs are the Only Defense", "link": "aeM8v_idbg0"},
+#     ]
 
 
 
