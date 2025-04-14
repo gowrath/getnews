@@ -334,13 +334,13 @@ def home():
                     summary = cache[video_id]
                 else:
                     # Safely try fetching transcript
-                    # transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+                    transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
                     transcript_obj = transcripts.find_transcript([
                         "en", "ko", "fr", "es", "zh", "zh-Hans", "zh-Hant", "ja"
                     ])
-                    # raw_transcript = transcript_obj.fetch()
+                    raw_transcript = transcript_obj.fetch()
                     transcript_text = clean_transcript(raw_transcript)
-                    # summary = generate_summary(transcript_text)
+                    summary = generate_summary(transcript_text)
                     cache[video_id] = summary
                     save_cache(cache)
 
