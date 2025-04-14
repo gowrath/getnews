@@ -1,2 +1,2 @@
-# getnews
- get the latest federal news
+# transcriber
+ Scrapes news with Gemini with a chat interface afterware
