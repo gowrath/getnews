@@ -19,17 +19,15 @@ import json
 
 # If using a proxy:
 
-from youtube_transcript_api.proxies import ProxyConfig
+from youtube_transcript_api.proxies import WebshareProxyConfig
 
 
-proxy_url = os.getenv("YOUTUBE_PROXY")
-
-if proxy_url:
-    YouTubeTranscriptApi._proxy_config = ProxyConfig(url=proxy_url)
-    print(f"🛡️ Rotating proxy configured: {proxy_url.split('@')[-1]}")
-else:
-    print("⚠️ No proxy configured.")
-
+ytt_api = YouTubeTranscriptApi(
+    proxy_config=WebshareProxyConfig(
+        proxy_username=os.getenv("YOUTUBE_PROXY_USER"),
+        proxy_password=os.getenv("YOUTUBE_PROXY_PASS"),
+    )
+)
 
 
 CACHE_FILE = "summary_cache.json"
@@ -349,7 +347,7 @@ def home():
                     summary = cache[video_id]
                 else:
                     # Safely try fetching transcript
-                    transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+                    transcripts = ytt_api.list_transcripts(video_id)
                     transcript_obj = transcripts.find_transcript([
                         "en", "ko", "fr", "es", "zh", "zh-Hans", "zh-Hant", "ja"
                     ])
