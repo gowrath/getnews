@@ -18,19 +18,18 @@ from dotenv import load_dotenv
 import json
 
 # If using a proxy:
-proxy_host = os.getenv("YOUTUBE_PROXY_HOST")
-proxy_port = int(os.getenv("YOUTUBE_PROXY_PORT"))
-proxy_user = os.getenv("YOUTUBE_PROXY_USER")
-proxy_pass = os.getenv("YOUTUBE_PROXY_PASS")
 
-if proxy_host and proxy_port and proxy_user and proxy_pass:
-    YouTubeTranscriptApi._proxy_config = WebshareProxyConfig(
-        proxy_host=proxy_host,
-        proxy_port=proxy_port,
-        proxy_username=proxy_user,
-        proxy_password=proxy_pass
-    )
-    print(f"🛡️ Proxy configured: {proxy_host}:{proxy_port}")
+from youtube_transcript_api.proxies import ProxyConfig
+
+
+proxy_url = os.getenv("YOUTUBE_PROXY")
+
+if proxy_url:
+    YouTubeTranscriptApi._proxy_config = ProxyConfig(url=proxy_url)
+    print(f"🛡️ Rotating proxy configured: {proxy_url.split('@')[-1]}")
+else:
+    print("⚠️ No proxy configured.")
+
 
 
 CACHE_FILE = "summary_cache.json"
