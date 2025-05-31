@@ -45,6 +45,14 @@ def save_cache(cache):
 cache = load_cache()
 
 
+# New helper to format cache for prompt context
+def format_cache_as_context(cache_dict):
+    lines = []
+    for video_id, summary in cache_dict.items():
+        lines.append(f"Video ID: {video_id}\nSummary: {summary}\n")
+    return "\n\n".join(lines)
+
+
 
 # Load .env file
 load_dotenv()
@@ -320,7 +328,6 @@ def search_youtube_videos(query="msnbc trump musk"):
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-
     summaries_text = ""
     action_items_text = None
     videos_data = []
@@ -332,21 +339,18 @@ def home():
             try:
                 raw_link = video.get("link", "")
                 print(f"🔍 Processing video: {raw_link}")
-
-                # Support both full URLs and raw video IDs
                 if "watch?v=" in raw_link:
                     video_id = raw_link.split("watch?v=")[-1].split("&")[0]
                 elif "youtu.be/" in raw_link:
                     video_id = raw_link.split("youtu.be/")[-1].split("?")[0]
                 else:
-                    video_id = raw_link  # assume it's just a video ID
+                    video_id = raw_link
 
                 print(f"🎬 Extracted video ID: {video_id}")
 
                 if video_id in cache:
                     summary = cache[video_id]
                 else:
-                    # Safely try fetching transcript
                     transcripts = ytt_api.list_transcripts(video_id)
                     transcript_obj = transcripts.find_transcript([
                         "en", "ko", "fr", "es", "zh", "zh-Hans", "zh-Hant", "ja"
@@ -368,38 +372,39 @@ def home():
                 print(f"❌ Error processing {raw_link}: {e}")
                 videos_data.append({**video, "summary": None, "error": str(e)})
 
-
-
-
     elif request.method == "POST":
         action = request.form.get("action")
-        summaries_text = request.form.get("summaries_text", "")  # <- crucial
+        summaries_text = request.form.get("summaries_text", "")
         raw_summaries = summaries_text
+        cache_context = format_cache_as_context(cache)
 
         if action == "generate_action_items":
             try:
                 model = genai.GenerativeModel("gemini-2.0-flash")
+                prompt = f"""
+These are summaries of recent news videos:\n\n{cache_context}
+
+Please synthesize the themes into a cohesive summary, and suggest 1–2 things a regular U.S. citizen should begin to consider or take action on (in two sentences). Respond as a thoughtful advisor, no more than 4 sentences.
+"""
                 response = model.generate_content(
-                    f"""These are summaries of 5 recent news videos:\n{raw_summaries}\n\n
-                    Please synthesize the themes into a cohesive summary, and suggest 1–2 things a regular U.S. citizen should begin to consider or take action on (in two sentences). Respond as a thoughtful advisor, no more than 4 sentences. """,
+                    prompt,
                     generation_config=genai.types.GenerationConfig(max_output_tokens=500)
                 )
                 action_items_text = response.text.strip()
             except Exception as e:
                 action_items_text = f"Error generating action items: {e}"
 
-        
         elif action == "chat_message":
             chat_input = request.form.get("chat_input", "")
             if chat_input.strip():
                 try:
                     model = genai.GenerativeModel("gemini-2.0-flash")
-                    response = model.generate_content(chat_input)
+                    prompt = f"""These are recent summaries of news videos:\n\n{cache_context}\n\nUser: {chat_input}\nAssistant:"""
+                    response = model.generate_content(prompt)
                     chat_response_text = response.text.strip()
                 except Exception as e:
                     chat_response_text = f"Error: {e}"
 
-        # Repopulate video bullets (from cache only)
         for video in videos:
             video_id = video["link"].split("watch?v=")[-1].split("&")[0]
             summary = cache.get(video_id, None)
@@ -417,13 +422,7 @@ def home():
     )
 
 
-# Connect to ngrok with reserved username
-
-
-
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))  # Railway uses 8080 in your case
+    port = int(os.environ.get("PORT", 8080))
     print(f"🚀 Flask running on port {port}")
     app.run(host="0.0.0.0", port=port)
-
