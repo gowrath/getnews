@@ -155,43 +155,32 @@ HTML_TEMPLATE = """
     <textarea id="chat-input" placeholder="Ask..." rows="4" style="width: 100%; padding: 8px;"></textarea>
 
 
-    <script>
-    const chatLog = document.getElementById("chat-log");
-    const chatInput = document.getElementById("chat-input");
+<script>
+const chatLog = document.getElementById("chat-log");
+const chatInput = document.getElementById("chat-input");
 
-    // Load stored messages
-    const storedChat = JSON.parse(localStorage.getItem("chatHistory") || "[]");
-    storedChat.forEach(msg => addMessage(msg.role, msg.content));
+function addMessage(role, content) {
+    const msgDiv = document.createElement("div");
+    msgDiv.className = `chat-msg ${role === "user" ? "user-msg" : "assistant-msg"}`;
+    msgDiv.innerHTML = marked.parse(content);  // Markdown formatting
+    chatLog.appendChild(msgDiv);
+    chatLog.scrollTop = chatLog.scrollHeight;
+}
 
-    function addMessage(role, content) {
-        const msgDiv = document.createElement("div");
-        msgDiv.className = `chat-msg ${role === "user" ? "user-msg" : "assistant-msg"}`;
-        msgDiv.innerHTML = marked.parse(content);  // 👈 Use markdown rendering
-        chatLog.appendChild(msgDiv);
-        chatLog.scrollTop = chatLog.scrollHeight;
-    }
+async function sendToServer(message) {
+    const formData = new FormData();
+    formData.append("chat_input", message);
 
+    const res = await fetch("/chat", {
+        method: "POST",
+        body: formData
+    });
 
-    async function sendToServer(message) {
-        const formData = new FormData();
-        formData.append("action", "chat_message");
-        formData.append("chat_input", message);
+    const data = await res.json();
+    return data.response || "⚠️ No response";
+}
 
-        const res = await fetch("/", {
-            method: "POST",
-            body: formData
-        });
-
-        const text = await res.text();
-        const parser = new DOMParser();
-        const htmlDoc = parser.parseFromString(text, 'text/html');
-
-        const responseEl = htmlDoc.querySelector("#chat-response");
-        return responseEl ? responseEl.textContent.trim() : "⚠️ No response";
-    }
-
-
-    chatInput.addEventListener("keydown", async (e) => {
+chatInput.addEventListener("keydown", async (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         const msg = chatInput.value.trim();
@@ -209,21 +198,25 @@ HTML_TEMPLATE = """
         history.push({ role: "assistant", content: reply });
         localStorage.setItem("chatHistory", JSON.stringify(history));
     }
-    });
+});
 
-    document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", () => {
+    const storedChat = JSON.parse(localStorage.getItem("chatHistory") || "[]");
+    storedChat.forEach(msg => addMessage(msg.role, msg.content));
+
     const resetBtn = document.getElementById("reset-chat");
     if (resetBtn) {
         resetBtn.addEventListener("click", () => {
-        localStorage.removeItem("chatHistory");
-        document.getElementById("chat-log").innerHTML = "";
-        document.getElementById("chat-input").value = "";
+            localStorage.removeItem("chatHistory");
+            document.getElementById("chat-log").innerHTML = "";
+            document.getElementById("chat-input").value = "";
         });
     }
-    });
+});
+</script>
 
 
-    </script>
+
     <button id="reset-chat" style="
     margin-top: 10px;
     padding: 12px 18px;
@@ -326,6 +319,25 @@ def search_youtube_videos(query="msnbc trump musk"):
 
 
 
+@app.route('/chat', methods=['POST'])
+def chat():
+    chat_input = request.form.get("chat_input", "")
+    cache_context = format_cache_as_context(cache)
+
+    if not chat_input.strip():
+        return jsonify({"response": "⚠️ Empty message."})
+
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        prompt = f"""These are recent summaries of news videos:\n\n{cache_context}\n\nUser: {chat_input}\nAssistant:"""
+        response = model.generate_content(prompt)
+        return jsonify({"response": response.text.strip()})
+    except Exception as e:
+        print(f"💥 Chat error: {e}")
+        return jsonify({"response": f"Error: {str(e)}"})
+
+
+
 @app.route('/', methods=['GET', 'POST'])
 def home():
     summaries_text = ""
@@ -394,21 +406,34 @@ Please synthesize the themes into a cohesive summary, and suggest 1–2 things a
             except Exception as e:
                 action_items_text = f"Error generating action items: {e}"
 
-        elif action == "chat_message":
-            chat_input = request.form.get("chat_input", "")
-            if chat_input.strip():
+        elif request.method == "POST":
+            action = request.form.get("action")
+            summaries_text = request.form.get("summaries_text", "")
+            cache_context = format_cache_as_context(cache)
+            action_items_text = None
+
+            if action == "generate_action_items":
                 try:
                     model = genai.GenerativeModel("gemini-2.0-flash")
-                    prompt = f"""These are recent summaries of news videos:\n\n{cache_context}\n\nUser: {chat_input}\nAssistant:"""
-                    response = model.generate_content(prompt)
-                    chat_response_text = response.text.strip()
-                except Exception as e:
-                    chat_response_text = f"Error: {e}"
+                    prompt = f"""
+        These are summaries of recent news videos:\n\n{cache_context}
 
-        for video in videos:
-            video_id = video["link"].split("watch?v=")[-1].split("&")[0]
-            summary = cache.get(video_id, None)
-            videos_data.append({**video, "summary": summary})
+        Please synthesize the themes into a cohesive summary, and suggest 1–2 things a regular U.S. citizen should begin to consider or take action on (in two sentences). Respond as a thoughtful advisor, no more than 4 sentences.
+        """
+                    response = model.generate_content(
+                        prompt,
+                        generation_config=genai.types.GenerationConfig(max_output_tokens=500)
+                    )
+                    action_items_text = response.text.strip()
+                except Exception as e:
+                    print(f"🔥 Action item error: {e}")
+                    action_items_text = f"Error generating action items: {e}"
+
+            for video in videos:
+                video_id = video["link"].split("watch?v=")[-1].split("&")[0]
+                summary = cache.get(video_id, None)
+                videos_data.append({**video, "summary": summary})
+
 
     return render_template_string(
         HTML_TEMPLATE,
