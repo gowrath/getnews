@@ -336,63 +336,52 @@ def chat():
         print(f"💥 Chat error: {e}")
         return jsonify({"response": f"Error: {str(e)}"})
 
-
-
 @app.route('/', methods=['GET', 'POST'])
 def home():
     summaries_text = ""
     action_items_text = None
     videos_data = []
-    videos = search_youtube_videos()
     chat_response_text = None
 
-    if request.method == "GET":
-        for video in videos:
-            try:
-                raw_link = video.get("link", "")
-                print(f"🔍 Processing video: {raw_link}")
-                if "watch?v=" in raw_link:
-                    video_id = raw_link.split("watch?v=")[-1].split("&")[0]
-                elif "youtu.be/" in raw_link:
-                    video_id = raw_link.split("youtu.be/")[-1].split("?")[0]
-                else:
-                    video_id = raw_link
+    # Always get fresh list of videos from YouTube
+    videos = search_youtube_videos()
 
-                print(f"🎬 Extracted video ID: {video_id}")
+    # Prepare summaries and video data from cache (whether GET or POST)
+    for video in videos:
+        try:
+            video_id = video["link"].split("watch?v=")[-1].split("&")[0]
+            summary = cache.get(video_id)
 
-                if video_id in cache:
-                    summary = cache[video_id]
-                else:
-                    transcripts = ytt_api.list_transcripts(video_id)
-                    transcript_obj = transcripts.find_transcript([
-                        "en", "ko", "fr", "es", "zh", "zh-Hans", "zh-Hant", "ja"
-                    ])
-                    raw_transcript = transcript_obj.fetch()
-                    transcript_text = clean_transcript(raw_transcript)
-                    summary = generate_summary(transcript_text)
-                    cache[video_id] = summary
-                    save_cache(cache)
+            if not summary:
+                # Try to fetch transcript and generate summary
+                transcripts = ytt_api.list_transcripts(video_id)
+                transcript_obj = transcripts.find_transcript([
+                    "en", "ko", "fr", "es", "zh", "zh-Hans", "zh-Hant", "ja"
+                ])
+                raw_transcript = transcript_obj.fetch()
+                transcript_text = clean_transcript(raw_transcript)
+                summary = generate_summary(transcript_text)
 
-                summaries_text += summary + "\n\n"
-                videos_data.append({**video, "summary": summary})
+                cache[video_id] = summary
+                save_cache(cache)
 
-            except TranscriptsDisabled:
-                print(f"⚠️ Transcripts disabled for {raw_link}")
-                videos_data.append({**video, "summary": None, "error": "Transcripts are disabled."})
+            summaries_text += summary + "\n\n"
+            videos_data.append({**video, "summary": summary})
 
-            except Exception as e:
-                print(f"❌ Error processing {raw_link}: {e}")
-                videos_data.append({**video, "summary": None, "error": str(e)})
+        except TranscriptsDisabled:
+            print(f"⚠️ Transcripts disabled for {video['link']}")
+            videos_data.append({**video, "summary": None, "error": "Transcripts are disabled."})
+        except Exception as e:
+            print(f"❌ Error processing {video['link']}: {e}")
+            videos_data.append({**video, "summary": None, "error": str(e)})
 
-    elif request.method == "POST":
+    # Handle POST only for action item generation
+    if request.method == "POST":
         action = request.form.get("action")
-        summaries_text = request.form.get("summaries_text", "")
-        raw_summaries = summaries_text
-        cache_context = format_cache_as_context(cache)
-
         if action == "generate_action_items":
             try:
                 model = genai.GenerativeModel("gemini-2.0-flash")
+                cache_context = format_cache_as_context(cache)
                 prompt = f"""
 These are summaries of recent news videos:\n\n{cache_context}
 
@@ -404,36 +393,8 @@ Please synthesize the themes into a cohesive summary, and suggest 1–2 things a
                 )
                 action_items_text = response.text.strip()
             except Exception as e:
+                print(f"🔥 Action item generation failed: {e}")
                 action_items_text = f"Error generating action items: {e}"
-
-        elif request.method == "POST":
-            action = request.form.get("action")
-            summaries_text = request.form.get("summaries_text", "")
-            cache_context = format_cache_as_context(cache)
-            action_items_text = None
-
-            if action == "generate_action_items":
-                try:
-                    model = genai.GenerativeModel("gemini-2.0-flash")
-                    prompt = f"""
-        These are summaries of recent news videos:\n\n{cache_context}
-
-        Please synthesize the themes into a cohesive summary, and suggest 1–2 things a regular U.S. citizen should begin to consider or take action on (in two sentences). Respond as a thoughtful advisor, no more than 4 sentences.
-        """
-                    response = model.generate_content(
-                        prompt,
-                        generation_config=genai.types.GenerationConfig(max_output_tokens=500)
-                    )
-                    action_items_text = response.text.strip()
-                except Exception as e:
-                    print(f"🔥 Action item error: {e}")
-                    action_items_text = f"Error generating action items: {e}"
-
-            for video in videos:
-                video_id = video["link"].split("watch?v=")[-1].split("&")[0]
-                summary = cache.get(video_id, None)
-                videos_data.append({**video, "summary": summary})
-
 
     return render_template_string(
         HTML_TEMPLATE,
